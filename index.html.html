@@ -1,0 +1,2351 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Consultorio — Finanzas</title>
+
+<!-- ============================================================
+     INSTRUCCIONES DE CONFIGURACIÓN
+     ============================================================
+     1. Ir a https://console.cloud.google.com
+     2. Crear un proyecto (o usar uno existente)
+     3. Habilitar la API: "Google Drive API"
+     4. En "Credenciales" → "Crear credenciales" → "ID de cliente OAuth 2.0"
+     5. Tipo: "Aplicación web"
+     6. En "Orígenes de JavaScript autorizados" agregar:
+        - http://localhost (si lo probás localmente)
+        - El origen desde donde servís el archivo (ej: https://mi-dominio.com)
+        - Si abrís directo como file://, NO funcionará OAuth; usá un servidor local
+          (ej: python3 -m http.server 8080 y luego http://localhost:8080)
+     7. Reemplazá "TU_CLIENT_ID_AQUI" con tu Client ID
+     ============================================================ -->
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #F4F6F8;
+    --surface: #FFFFFF;
+    --surface2: #F0F2F5;
+    --border: #E2E6EB;
+    --text: #0D1117;
+    --text2: #5A6472;
+    --text3: #9AA3AD;
+    --accent: #1A56DB;
+    --accent-light: #EBF1FF;
+    --green: #0D9488;
+    --green-light: #CCFBF1;
+    --red: #DC2626;
+    --red-light: #FEE2E2;
+    --amber: #D97706;
+    --amber-light: #FEF3C7;
+    --hugo: #7C3AED;
+    --hugo-light: #EDE9FE;
+    --laura: #DB2777;
+    --laura-light: #FCE7F3;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.06);
+    --tab-h: 68px;
+    --header-h: 60px;
+    --font: 'DM Sans', sans-serif;
+    --mono: 'DM Mono', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #app { display: flex; flex-direction: column; min-height: 100dvh; }
+
+  /* ============ HEADER ============ */
+  .header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: var(--header-h);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px;
+    backdrop-filter: blur(10px);
+    gap: 8px;
+  }
+  .header-logo { font-size: 17px; font-weight: 700; letter-spacing: -.4px; flex-shrink: 0; }
+  .header-logo span { color: var(--accent); }
+  .header-center { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: center; }
+  .header-month {
+    font-size: 13px; font-weight: 500; color: var(--text2);
+    background: var(--surface2); padding: 6px 12px; border-radius: 20px;
+    cursor: pointer; border: 1px solid var(--border); white-space: nowrap;
+  }
+  /* Sync status pill in header */
+  .sync-pill {
+    display: flex; align-items: center; gap: 5px;
+    padding: 5px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+    border: 1px solid var(--border); background: var(--surface2); cursor: pointer;
+    flex-shrink: 0; transition: all .2s; white-space: nowrap;
+  }
+  .sync-pill .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .sync-pill.synced   { border-color: #99F6E4; background: var(--green-light); color: var(--green); }
+  .sync-pill.synced .dot   { background: var(--green); }
+  .sync-pill.pending  { border-color: #FDE68A; background: var(--amber-light); color: var(--amber); }
+  .sync-pill.pending .dot  { background: var(--amber); animation: blink 1.2s infinite; }
+  .sync-pill.error    { border-color: #FECACA; background: var(--red-light); color: var(--red); }
+  .sync-pill.error .dot    { background: var(--red); }
+  .sync-pill.offline  { border-color: var(--border); background: var(--surface2); color: var(--text3); }
+  .sync-pill.offline .dot  { background: var(--text3); }
+  .sync-pill.syncing .dot  { background: var(--accent); animation: blink .6s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .main {
+    flex: 1;
+    padding-top: var(--header-h);
+    padding-bottom: calc(var(--tab-h) + 8px);
+    overflow-y: auto;
+  }
+
+  .page { display: none; padding: 16px; animation: fadeIn .2s ease; }
+  .page.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ============ TAB BAR ============ */
+  .tabbar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    height: var(--tab-h);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center;
+    padding: 0 2px;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .tab-btn {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 2px; padding: 6px 2px; border: none; background: none;
+    cursor: pointer; border-radius: var(--radius-sm); transition: all .15s;
+    color: var(--text3); font-family: var(--font);
+  }
+  .tab-btn.active { color: var(--accent); }
+  .tab-btn svg { width: 20px; height: 20px; }
+  .tab-btn span { font-size: 9px; font-weight: 600; letter-spacing: .2px; }
+  .tab-btn.active .tab-icon-bg {
+    background: var(--accent-light); border-radius: 8px; padding: 2px 8px;
+  }
+
+  /* ============ CARDS ============ */
+  .card {
+    background: var(--surface); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 18px; margin-bottom: 12px;
+    border: 1px solid var(--border);
+  }
+  .card-title {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .8px; color: var(--text3); margin-bottom: 12px;
+  }
+
+  /* ============ DASHBOARD ============ */
+  .balance-hero {
+    background: linear-gradient(135deg, #1A56DB 0%, #1E40AF 100%);
+    border-radius: var(--radius); padding: 24px; color: white;
+    margin-bottom: 12px; position: relative; overflow: hidden;
+  }
+  .balance-hero::before {
+    content: ''; position: absolute;
+    width: 200px; height: 200px; border-radius: 50%;
+    background: rgba(255,255,255,.06); top: -80px; right: -60px;
+  }
+  .balance-hero-label { font-size: 12px; opacity: .75; font-weight: 500; letter-spacing: .5px; text-transform: uppercase; }
+  .balance-hero-amount { font-size: 36px; font-weight: 700; letter-spacing: -1px; margin: 6px 0; font-family: var(--mono); }
+  .balance-hero-month { font-size: 13px; opacity: .7; }
+
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .stat-card {
+    background: var(--surface); border-radius: var(--radius);
+    padding: 16px; border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+  }
+  .stat-label { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; }
+  .stat-amount { font-size: 20px; font-weight: 700; font-family: var(--mono); margin: 4px 0; }
+  .stat-amount.green { color: var(--green); }
+  .stat-amount.red { color: var(--red); }
+  .stat-sub { font-size: 12px; color: var(--text3); }
+
+  .personas-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .persona-card { border-radius: var(--radius); padding: 16px; border: 1px solid; }
+  .persona-card.hugo { background: var(--hugo-light); border-color: #C4B5FD; }
+  .persona-card.laura { background: var(--laura-light); border-color: #FBCFE8; }
+  .persona-name { font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+  .persona-card.hugo .persona-name { color: var(--hugo); }
+  .persona-card.laura .persona-name { color: var(--laura); }
+  .persona-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+  .persona-row-label { color: var(--text2); }
+  .persona-row-val { font-weight: 600; font-family: var(--mono); }
+
+  .transfer-box {
+    border-radius: var(--radius); padding: 16px 18px;
+    margin-bottom: 12px; text-align: center;
+  }
+  .transfer-box.green  { background: var(--green-light); border: 1px solid #99F6E4; }
+  .transfer-box.red    { background: var(--red-light);   border: 1px solid #FECACA; }
+  .transfer-box.neutral{ background: var(--surface2);    border: 1px solid var(--border); }
+  .transfer-label  { font-size: 13px; font-weight: 600; color: var(--text2); margin-bottom: 4px; }
+  .transfer-amount { font-size: 28px; font-weight: 700; font-family: var(--mono); }
+  .transfer-box.green .transfer-amount { color: var(--green); }
+  .transfer-box.red   .transfer-amount { color: var(--red); }
+  .transfer-detail { font-size: 11px; color: var(--text3); margin-top: 6px; font-family: var(--mono); }
+
+  /* ============ FORMS ============ */
+  .form-group { margin-bottom: 14px; }
+  .form-label {
+    font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px;
+    display: block; text-transform: uppercase; letter-spacing: .4px;
+  }
+  .form-control {
+    width: 100%; padding: 13px 14px; font-size: 16px;
+    border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--surface); color: var(--text);
+    font-family: var(--font); outline: none; transition: border-color .15s;
+    -webkit-appearance: none;
+  }
+  .form-control:focus { border-color: var(--accent); }
+  .form-control.mono { font-family: var(--mono); font-size: 18px; font-weight: 600; }
+
+  .seg-control {
+    display: flex; background: var(--surface2); border-radius: var(--radius-sm);
+    padding: 3px; gap: 3px;
+  }
+  .seg-btn {
+    flex: 1; padding: 10px 8px; border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: var(--font); transition: all .15s; color: var(--text2); background: none;
+  }
+  .seg-btn.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+  .seg-btn.hugo.active { color: var(--hugo); }
+  .seg-btn.laura.active { color: var(--laura); }
+
+  .btn {
+    width: 100%; padding: 16px; border: none; border-radius: var(--radius-sm);
+    font-size: 16px; font-weight: 700; cursor: pointer; font-family: var(--font);
+    transition: all .15s; letter-spacing: .1px;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:active { background: #1648C0; transform: scale(.98); }
+  .btn-success { background: var(--green); color: white; }
+  .btn-danger  { background: var(--red); color: white; }
+  .btn-outline {
+    background: none; border: 1.5px solid var(--border);
+    color: var(--text); padding: 13px;
+  }
+  .btn-sm { width: auto; padding: 10px 18px; font-size: 14px; }
+  .btn-row { display: flex; gap: 8px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
+
+  /* ============ LISTS ============ */
+  .txn-list { display: flex; flex-direction: column; gap: 8px; }
+  .txn-item {
+    background: var(--surface); border-radius: var(--radius-sm);
+    padding: 14px; border: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+    box-shadow: var(--shadow-sm);
+  }
+  .txn-dot {
+    width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .txn-dot.income { background: var(--green-light); }
+  .txn-dot.expense { background: var(--red-light); }
+  .txn-info { flex: 1; min-width: 0; }
+  .txn-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .txn-meta { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  .txn-right { text-align: right; flex-shrink: 0; }
+  .txn-amount { font-size: 15px; font-weight: 700; font-family: var(--mono); }
+  .txn-amount.income  { color: var(--green); }
+  .txn-amount.expense { color: var(--red); }
+  .txn-person { font-size: 11px; font-weight: 600; margin-top: 2px; }
+  .txn-person.hugo  { color: var(--hugo); }
+  .txn-person.laura { color: var(--laura); }
+  .txn-del {
+    background: none; border: none; cursor: pointer;
+    color: var(--text3); padding: 4px; border-radius: 6px;
+    font-size: 18px; line-height: 1;
+  }
+  .txn-del:active { color: var(--red); background: var(--red-light); }
+
+  /* ============ BALANCE ============ */
+  .formula-box {
+    background: var(--surface2); border-radius: var(--radius-sm);
+    padding: 14px; font-family: var(--mono); font-size: 12px;
+    color: var(--text2); border: 1px solid var(--border);
+    line-height: 1.8; margin-top: 10px; white-space: pre-wrap;
+  }
+  .formula-highlight { color: var(--accent); font-weight: 600; }
+  canvas { display: block; width: 100%; }
+
+  /* ============ PROJECTION ============ */
+  .proj-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 0; border-bottom: 1px solid var(--border);
+  }
+  .proj-item:last-child { border-bottom: none; }
+  .proj-label { font-size: 14px; color: var(--text2); }
+  .proj-val { font-size: 16px; font-weight: 700; font-family: var(--mono); }
+
+  /* ============ SETTINGS ============ */
+  .settings-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 0; border-bottom: 1px solid var(--border); font-size: 14px;
+  }
+  .settings-row:last-child { border-bottom: none; }
+  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--accent-light); color: var(--accent);
+    padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  }
+  .tag-del { cursor: pointer; font-size: 14px; opacity:.7; border: none; background: none; color: inherit; }
+
+  /* ============ MODALS ============ */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,.4); display: none;
+    align-items: flex-end; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-sheet {
+    background: var(--surface); border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 480px; padding: 20px;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+    animation: slideUp .25s ease;
+  }
+  @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+  .modal-handle {
+    width: 36px; height: 4px; background: var(--border);
+    border-radius: 2px; margin: 0 auto 16px;
+  }
+  .month-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+  .month-opt {
+    padding: 12px 8px; text-align: center; border-radius: var(--radius-sm);
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    border: 1.5px solid var(--border); background: none; font-family: var(--font);
+    color: var(--text); transition: all .15s;
+  }
+  .month-opt.active { border-color: var(--accent); background: var(--accent-light); color: var(--accent); font-weight: 700; }
+  .year-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .year-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: 16px; }
+  .year-label { font-size: 18px; font-weight: 700; }
+
+  /* ============ CLOUD PAGE ============ */
+  .cloud-hero {
+    background: linear-gradient(135deg, #0F172A 0%, #1E40AF 100%);
+    border-radius: var(--radius); padding: 28px 24px; color: white;
+    margin-bottom: 12px; text-align: center; position: relative; overflow: hidden;
+  }
+  .cloud-hero::before {
+    content: ''; position: absolute; width: 240px; height: 240px; border-radius: 50%;
+    background: rgba(255,255,255,.04); bottom: -100px; left: -60px;
+  }
+  .cloud-hero-icon { font-size: 48px; margin-bottom: 12px; }
+  .cloud-hero-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+  .cloud-hero-sub { font-size: 13px; opacity: .7; }
+
+  .user-card {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--surface); border-radius: var(--radius);
+    padding: 16px 18px; border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm); margin-bottom: 12px;
+  }
+  .user-avatar {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: var(--accent-light); display: flex; align-items: center;
+    justify-content: center; font-size: 20px; flex-shrink: 0; overflow: hidden;
+  }
+  .user-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+  .user-name { font-size: 15px; font-weight: 700; }
+  .user-email { font-size: 12px; color: var(--text3); margin-top: 2px; }
+
+  .sync-status-card {
+    border-radius: var(--radius); padding: 18px;
+    border: 1px solid var(--border); margin-bottom: 12px;
+    background: var(--surface); box-shadow: var(--shadow-sm);
+  }
+  .sync-status-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .sync-status-row:last-child { border-bottom: none; }
+  .sync-status-label { color: var(--text2); }
+  .sync-status-val { font-weight: 600; }
+
+  .big-sync-btn {
+    width: 100%; padding: 18px; background: var(--accent); color: white;
+    border: none; border-radius: var(--radius-sm); font-size: 17px; font-weight: 700;
+    cursor: pointer; font-family: var(--font); display: flex; align-items: center;
+    justify-content: center; gap: 10px; transition: all .2s; margin-bottom: 12px;
+  }
+  .big-sync-btn:active { background: #1648C0; transform: scale(.98); }
+  .big-sync-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .big-sync-btn.spinning svg { animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ============ LOGIN SCREEN ============ */
+  #login-screen {
+    position: fixed; inset: 0; z-index: 500;
+    background: linear-gradient(160deg, #0D1117 0%, #0D2149 60%, #0F172A 100%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 32px 24px; text-align: center;
+  }
+  .login-logo { font-size: 56px; margin-bottom: 20px; }
+  .login-title { font-size: 28px; font-weight: 700; color: white; letter-spacing: -.5px; margin-bottom: 8px; }
+  .login-title span { color: #60A5FA; }
+  .login-sub { font-size: 15px; color: rgba(255,255,255,.55); margin-bottom: 40px; max-width: 280px; line-height: 1.6; }
+  .login-features { display: flex; flex-direction: column; gap: 12px; margin-bottom: 44px; width: 100%; max-width: 300px; }
+  .login-feat {
+    display: flex; align-items: center; gap: 12px;
+    background: rgba(255,255,255,.06); border-radius: 12px;
+    padding: 12px 16px; border: 1px solid rgba(255,255,255,.1); text-align: left;
+  }
+  .login-feat-icon { font-size: 20px; flex-shrink: 0; }
+  .login-feat-text { font-size: 13px; color: rgba(255,255,255,.8); }
+
+  #google-signin-btn {
+    background: white; color: #1A1A1A; border: none;
+    border-radius: 12px; padding: 16px 32px; font-size: 16px; font-weight: 700;
+    cursor: pointer; font-family: var(--font);
+    display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.4); transition: all .2s;
+    min-width: 260px; justify-content: center;
+  }
+  #google-signin-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 30px rgba(0,0,0,.5); }
+  #google-signin-btn:active { transform: scale(.97); }
+  .google-icon { width: 22px; height: 22px; flex-shrink: 0; }
+
+  .login-skip {
+    margin-top: 20px; font-size: 13px; color: rgba(255,255,255,.4);
+    cursor: pointer; text-decoration: underline; background: none; border: none;
+    font-family: var(--font); padding: 8px;
+  }
+  .login-version { position: absolute; bottom: 24px; font-size: 11px; color: rgba(255,255,255,.25); }
+
+  /* ============ MISC ============ */
+  .empty { text-align: center; padding: 40px 20px; color: var(--text3); }
+  .empty-icon { font-size: 48px; margin-bottom: 10px; }
+  .empty-text { font-size: 14px; }
+  .filter-row { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 2px; }
+  .filter-btn {
+    flex-shrink: 0; padding: 7px 14px; border-radius: 20px; font-size: 13px;
+    font-weight: 600; border: 1.5px solid var(--border); background: none;
+    cursor: pointer; font-family: var(--font); color: var(--text2); transition: all .15s;
+  }
+  .filter-btn.active { border-color: var(--accent); background: var(--accent-light); color: var(--accent); }
+  .section-title { font-size: 18px; font-weight: 700; margin-bottom: 14px; }
+  .fab {
+    position: fixed; bottom: calc(var(--tab-h) + 16px); right: 16px; z-index: 90;
+    width: 52px; height: 52px; border-radius: 50%; background: var(--accent);
+    color: white; border: none; font-size: 26px; cursor: pointer;
+    box-shadow: 0 4px 20px rgba(26,86,219,.4); display: flex; align-items: center; justify-content: center;
+    transition: transform .15s;
+  }
+  .fab:active { transform: scale(.92); }
+  .form-card {
+    background: var(--surface); border-radius: var(--radius);
+    padding: 18px; margin-bottom: 14px;
+    border: 2px solid var(--accent-light);
+    box-shadow: 0 0 0 4px var(--accent-light);
+  }
+  .divider { height: 1px; background: var(--border); margin: 16px 0; }
+  .chart-wrap { position: relative; }
+  .chart-legend { display: flex; gap: 14px; margin-top: 10px; font-size: 12px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .toast {
+    position: fixed; bottom: calc(var(--tab-h) + 20px); left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--text); color: white; padding: 10px 20px; border-radius: 20px;
+    font-size: 13px; font-weight: 600; z-index: 300; opacity: 0; transition: all .3s;
+    white-space: nowrap; max-width: 90vw; text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  input[type="number"] { -moz-appearance: textfield; }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .proj-edit { width: 100px; text-align: right; }
+
+  @media (min-width: 480px) {
+    .main  { max-width: 480px; margin: 0 auto; }
+    .tabbar{ max-width: 480px; left: 50%; transform: translateX(-50%); }
+    .header{ max-width: 480px; left: 50%; transform: translateX(-50%); }
+    .fab   { right: calc(50% - 240px + 16px); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     LOGIN SCREEN
+     ============================================================ -->
+<div id="login-screen">
+  <div class="login-logo">🏥</div>
+  <div class="login-title">Consul<span>torio</span></div>
+  <div class="login-sub">Gestión financiera para tu consultorio médico compartido</div>
+  <div class="login-features">
+    <div class="login-feat">
+      <div class="login-feat-icon">☁️</div>
+      <div class="login-feat-text">Datos sincronizados en Google Drive</div>
+    </div>
+    <div class="login-feat">
+      <div class="login-feat-icon">🔄</div>
+      <div class="login-feat-text">Hugo y Laura comparten la misma base de datos</div>
+    </div>
+    <div class="login-feat">
+      <div class="login-feat-icon">📊</div>
+      <div class="login-feat-text">Balance 50/50 automático</div>
+    </div>
+  </div>
+  <button id="google-signin-btn" onclick="signInWithGoogle()">
+    <svg class="google-icon" viewBox="0 0 48 48">
+      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.8 2.5 30.2 0 24 0 14.7 0 6.7 5.4 2.7 13.3l7.8 6.1C12.4 13.1 17.8 9.5 24 9.5z"/>
+      <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/>
+      <path fill="#FBBC05" d="M10.5 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.1.8-4.6l-7.8-6.1A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.5 10.7l8-6.1z"/>
+      <path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.3-7.7 2.3-6.2 0-11.5-4.2-13.4-9.9l-8 6.2C6.7 42.6 14.7 48 24 48z"/>
+    </svg>
+    Continuar con Google
+  </button>
+  <button class="login-skip" onclick="useOfflineMode()">Usar sin cuenta (solo local)</button>
+  <div class="login-version">Consultorio Finanzas v2.0</div>
+</div>
+
+<!-- ============================================================
+     MAIN APP
+     ============================================================ -->
+<div id="app" style="display:none">
+  <header class="header">
+    <div class="header-logo">Consul<span>torio</span></div>
+    <div class="header-center">
+      <div class="header-month" id="header-month-btn" onclick="openMonthPicker()">cargando...</div>
+    </div>
+    <div class="sync-pill offline" id="sync-pill" onclick="goTo('nube', document.getElementById('tab-nube'))" title="Estado de sincronización">
+      <div class="dot"></div>
+      <span id="sync-pill-text">Local</span>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- ===== DASHBOARD ===== -->
+    <div class="page active" id="page-dashboard">
+      <div class="balance-hero">
+        <div class="balance-hero-label">Resultado neto del mes</div>
+        <div class="balance-hero-amount" id="dash-neto">$0</div>
+        <div class="balance-hero-month" id="dash-period">—</div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Ingresos</div>
+          <div class="stat-amount green" id="dash-ing">$0</div>
+          <div class="stat-sub" id="dash-ing-count">0 registros</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Egresos</div>
+          <div class="stat-amount red" id="dash-egr">$0</div>
+          <div class="stat-sub" id="dash-egr-count">0 registros</div>
+        </div>
+      </div>
+      <div class="personas-grid">
+        <div class="persona-card hugo">
+          <div class="persona-name">Hugo</div>
+          <div class="persona-row"><span class="persona-row-label">Ingresos</span><span class="persona-row-val" id="dash-hugo-ing">$0</span></div>
+          <div class="persona-row"><span class="persona-row-label">Egresos</span><span class="persona-row-val" id="dash-hugo-egr">$0</span></div>
+          <div class="persona-row"><span class="persona-row-label">Neto</span><span class="persona-row-val" id="dash-hugo-neto">$0</span></div>
+        </div>
+        <div class="persona-card laura">
+          <div class="persona-name">Laura</div>
+          <div class="persona-row"><span class="persona-row-label">Ingresos</span><span class="persona-row-val" id="dash-laura-ing">$0</span></div>
+          <div class="persona-row"><span class="persona-row-label">Egresos</span><span class="persona-row-val" id="dash-laura-egr">$0</span></div>
+          <div class="persona-row"><span class="persona-row-label">Neto</span><span class="persona-row-val" id="dash-laura-neto">$0</span></div>
+        </div>
+      </div>
+      <div id="dash-transfer-box" class="transfer-box neutral">
+        <div class="transfer-label">Transferencia para equilibrar</div>
+        <div class="transfer-amount" id="dash-transfer-amt">$0</div>
+        <div class="transfer-detail" id="dash-transfer-detail">Sin datos suficientes</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Ingresos vs Egresos (últimos 6 meses)</div>
+        <div class="chart-wrap"><canvas id="chart-bar" height="160"></canvas></div>
+        <div class="chart-legend">
+          <div><span class="legend-dot" style="background:var(--green)"></span>Ingresos</div>
+          <div><span class="legend-dot" style="background:var(--red)"></span>Egresos</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Últimas transacciones</div>
+        <div id="dash-recent-list" class="txn-list"></div>
+      </div>
+    </div>
+
+    <!-- ===== INGRESOS ===== -->
+    <div class="page" id="page-ingresos">
+      <div class="section-title">Ingresos</div>
+      <div id="income-form-card" class="form-card" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Fecha</label>
+          <input type="date" class="form-control" id="inc-fecha">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Monto</label>
+          <input type="number" inputmode="decimal" placeholder="0.00" class="form-control mono" id="inc-monto">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Origen</label>
+          <select class="form-control" id="inc-origen"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Profesional / Servicio</label>
+          <select class="form-control" id="inc-profesional"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Recibido por</label>
+          <div class="seg-control">
+            <button class="seg-btn hugo active" onclick="selectSeg('inc-persona','Hugo',this)">Hugo</button>
+            <button class="seg-btn laura" onclick="selectSeg('inc-persona','Laura',this)">Laura</button>
+          </div>
+          <input type="hidden" id="inc-persona" value="Hugo">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observaciones</label>
+          <input type="text" placeholder="Opcional..." class="form-control" id="inc-obs">
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-outline btn-sm" onclick="toggleForm('income')">Cancelar</button>
+          <button class="btn btn-success btn-sm" style="flex:1" onclick="saveIngreso()">Guardar ingreso</button>
+        </div>
+      </div>
+      <div class="filter-row">
+        <button class="filter-btn active" onclick="filterTxn('inc','all',this)">Todos</button>
+        <button class="filter-btn" onclick="filterTxn('inc','Hugo',this)">Hugo</button>
+        <button class="filter-btn" onclick="filterTxn('inc','Laura',this)">Laura</button>
+      </div>
+      <div id="ingresos-list" class="txn-list"></div>
+    </div>
+
+    <!-- ===== EGRESOS ===== -->
+    <div class="page" id="page-egresos">
+      <div class="section-title">Egresos</div>
+      <div id="expense-form-card" class="form-card" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Fecha</label>
+          <input type="date" class="form-control" id="egr-fecha">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Monto</label>
+          <input type="number" inputmode="decimal" placeholder="0.00" class="form-control mono" id="egr-monto">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Categoría</label>
+          <select class="form-control" id="egr-cat"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Realizado por</label>
+          <div class="seg-control">
+            <button class="seg-btn hugo active" onclick="selectSeg('egr-persona','Hugo',this)">Hugo</button>
+            <button class="seg-btn laura" onclick="selectSeg('egr-persona','Laura',this)">Laura</button>
+          </div>
+          <input type="hidden" id="egr-persona" value="Hugo">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Detalle</label>
+          <input type="text" placeholder="Descripción del gasto..." class="form-control" id="egr-detalle">
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-outline btn-sm" onclick="toggleForm('expense')">Cancelar</button>
+          <button class="btn btn-danger btn-sm" style="flex:1" onclick="saveEgreso()">Guardar egreso</button>
+        </div>
+      </div>
+      <div class="filter-row">
+        <button class="filter-btn active" onclick="filterTxn('egr','all',this)">Todos</button>
+        <button class="filter-btn" onclick="filterTxn('egr','Hugo',this)">Hugo</button>
+        <button class="filter-btn" onclick="filterTxn('egr','Laura',this)">Laura</button>
+      </div>
+      <div id="egresos-list" class="txn-list"></div>
+    </div>
+
+    <!-- ===== BALANCE ===== -->
+    <div class="page" id="page-balance">
+      <div class="section-title">Balance Mensual</div>
+      <div class="card">
+        <div class="card-title">Resumen del mes</div>
+        <div id="balance-summary"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Cálculo 50/50</div>
+        <div id="balance-calc"></div>
+        <div id="balance-formula" class="formula-box"></div>
+      </div>
+      <div id="balance-transfer-box" class="transfer-box neutral" style="margin-bottom:12px">
+        <div class="transfer-label" id="bal-transfer-label">Transferencia requerida</div>
+        <div class="transfer-amount" id="bal-transfer-amt">$0</div>
+        <div class="transfer-detail" id="bal-transfer-detail">—</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Distribución de ingresos</div>
+        <canvas id="chart-pie" height="180"></canvas>
+        <div class="chart-legend" style="justify-content:center;margin-top:14px">
+          <div><span class="legend-dot" style="background:var(--hugo)"></span>Hugo</div>
+          <div><span class="legend-dot" style="background:var(--laura)"></span>Laura</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PROYECCIÓN ===== -->
+    <div class="page" id="page-proyeccion">
+      <div class="section-title">Proyección — Próximo mes</div>
+      <div class="card" id="proj-card">
+        <div class="card-title" id="proj-month-title">Proyección</div>
+        <div id="proj-content"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Gastos recurrentes detectados</div>
+        <div id="proj-recurrentes"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Presupuesto editable</div>
+        <div id="proj-budget-rows"></div>
+        <div class="divider"></div>
+        <div class="proj-item">
+          <div class="proj-label" style="font-weight:700">Total presupuesto</div>
+          <div class="proj-val" id="proj-budget-total">$0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== NUBE ===== -->
+    <div class="page" id="page-nube">
+      <div id="nube-logged-out" style="display:none">
+        <div class="cloud-hero">
+          <div class="cloud-hero-icon">☁️</div>
+          <div class="cloud-hero-title">Sincronización con Drive</div>
+          <div class="cloud-hero-sub">Iniciá sesión para guardar tus datos en Google Drive y compartirlos entre Hugo y Laura</div>
+        </div>
+        <button class="btn btn-primary" onclick="signInWithGoogle()" style="margin-bottom:12px; display:flex;align-items:center;justify-content:center;gap:10px">
+          <svg class="google-icon" viewBox="0 0 48 48" style="width:20px;height:20px">
+            <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.8 2.5 30.2 0 24 0 14.7 0 6.7 5.4 2.7 13.3l7.8 6.1C12.4 13.1 17.8 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/>
+            <path fill="#FBBC05" d="M10.5 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.1.8-4.6l-7.8-6.1A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.5 10.7l8-6.1z"/>
+            <path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.3-7.7 2.3-6.2 0-11.5-4.2-13.4-9.9l-8 6.2C6.7 42.6 14.7 48 24 48z"/>
+          </svg>
+          Iniciar sesión con Google
+        </button>
+      </div>
+
+      <div id="nube-logged-in" style="display:none">
+        <div id="nube-user-card" class="user-card">
+          <div class="user-avatar" id="nube-avatar">👤</div>
+          <div>
+            <div class="user-name" id="nube-name">—</div>
+            <div class="user-email" id="nube-email">—</div>
+          </div>
+        </div>
+
+        <button class="big-sync-btn" id="sync-btn" onclick="syncNow()">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Sincronizar con Drive
+        </button>
+
+        <div class="sync-status-card">
+          <div class="card-title">Estado de sincronización</div>
+          <div class="sync-status-row">
+            <span class="sync-status-label">Estado</span>
+            <span class="sync-status-val" id="ns-estado">—</span>
+          </div>
+          <div class="sync-status-row">
+            <span class="sync-status-label">Última sincronización</span>
+            <span class="sync-status-val" id="ns-ultima">Nunca</span>
+          </div>
+          <div class="sync-status-row">
+            <span class="sync-status-label">Versión remota</span>
+            <span class="sync-status-val" id="ns-version">—</span>
+          </div>
+          <div class="sync-status-row">
+            <span class="sync-status-label">Ingresos</span>
+            <span class="sync-status-val" id="ns-ingresos">0</span>
+          </div>
+          <div class="sync-status-row">
+            <span class="sync-status-label">Egresos</span>
+            <span class="sync-status-val" id="ns-egresos">0</span>
+          </div>
+          <div class="sync-status-row">
+            <span class="sync-status-label">Archivo en Drive</span>
+            <span class="sync-status-val" id="ns-archivo">—</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Sesión</div>
+          <div class="settings-row">
+            <span>Cerrar sesión</span>
+            <button class="btn btn-outline btn-sm" onclick="signOut()">Salir</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== CONFIGURACIÓN ===== -->
+    <div class="page" id="page-config">
+      <div class="section-title">Configuración</div>
+      <div class="card">
+        <div class="card-title">Orígenes de ingresos</div>
+        <div id="origins-tags" class="tag-list"></div>
+        <div class="btn-row" style="margin-top:12px">
+          <input type="text" placeholder="Nuevo origen..." class="form-control" id="new-origin" style="flex:1">
+          <button class="btn btn-primary btn-sm" onclick="addOrigin()">+ Agregar</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Profesionales / Servicios</div>
+        <div id="profs-tags" class="tag-list"></div>
+        <div class="btn-row" style="margin-top:12px">
+          <input type="text" placeholder="Nuevo profesional..." class="form-control" id="new-prof" style="flex:1">
+          <button class="btn btn-primary btn-sm" onclick="addProf()">+ Agregar</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Categorías de egresos</div>
+        <div id="cats-tags" class="tag-list"></div>
+        <div class="btn-row" style="margin-top:12px">
+          <input type="text" placeholder="Nueva categoría..." class="form-control" id="new-cat" style="flex:1">
+          <button class="btn btn-primary btn-sm" onclick="addCat()">+ Agregar</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Datos locales</div>
+        <div class="settings-row">
+          <span>Exportar a CSV</span>
+          <button class="btn btn-outline btn-sm" onclick="exportCSV()">📥 Exportar</button>
+        </div>
+        <div class="settings-row">
+          <span>Importar CSV / JSON</span>
+          <label class="btn btn-outline btn-sm" style="cursor:pointer;width:auto;padding:10px 18px;font-size:14px;font-weight:700;display:inline-block;text-align:center">
+            📤 Importar<input type="file" accept=".csv,.json" style="display:none" onchange="importFile(this)">
+          </label>
+        </div>
+        <div class="settings-row">
+          <span>Backup JSON local</span>
+          <button class="btn btn-outline btn-sm" onclick="exportJSON()">💾 Backup</button>
+        </div>
+        <div class="settings-row">
+          <span>Borrar todos los datos</span>
+          <button class="btn btn-danger btn-sm" onclick="clearAll()">🗑 Borrar</button>
+        </div>
+      </div>
+      <div class="card" style="text-align:center;color:var(--text3);font-size:12px;padding:14px">
+        Consultorio Finanzas v2.0 · Con sincronización Google Drive
+      </div>
+    </div>
+
+  </main>
+
+  <!-- TAB BAR (7 tabs) -->
+  <nav class="tabbar">
+    <button class="tab-btn active" onclick="goTo('dashboard',this)" id="tab-dashboard">
+      <div class="tab-icon-bg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </div>
+      <span>Inicio</span>
+    </button>
+    <button class="tab-btn" onclick="goTo('ingresos',this)" id="tab-ingresos">
+      <div class="tab-icon-bg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+      </div>
+      <span>Ingresos</span>
+    </button>
+    <button class="tab-btn" onclick="goTo('egresos',this)" id="tab-egresos">
+      <div class="tab-icon-bg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+      </div>
+      <span>Egresos</span>
+    </button>
+    <button class="tab-btn" onclick="goTo('balance',this)" id="tab-balance">
+      <div class="tab-icon-bg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      </div>
+      <span>Balance</span>
+    </button>
+    <button class="tab-btn" onclick="goTo('proyeccion',this)" id="tab-proyeccion">
+      <div class="tab-icon-bg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <span>Proyec.</span>
+    </button>
+    <button class="tab-btn" onclick="goTo('nube',this)" id="tab-nube">
+      <div class="tab-icon-bg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+      </div>
+      <span>Nube</span>
+    </button>
+    <button class="tab-btn" onclick="goTo('config',this)" id="tab-config">
+      <div class="tab-icon-bg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+      <span>Config</span>
+    </button>
+  </nav>
+</div>
+
+<!-- FAB -->
+<button class="fab" id="fab-btn" onclick="onFabClick()" style="display:none">+</button>
+
+<!-- Month picker modal -->
+<div class="modal-overlay" id="month-modal" onclick="closeMonthPicker(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="year-nav">
+      <button class="year-btn" onclick="changeYear(-1)">‹</button>
+      <div class="year-label" id="picker-year">2025</div>
+      <button class="year-btn" onclick="changeYear(1)">›</button>
+    </div>
+    <div class="month-grid" id="month-grid"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Google Identity Services SDK -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<script>
+// ============================================================
+//  ⚙️  CONFIGURACIÓN — REEMPLAZÁ ESTE VALOR
+// ============================================================
+const CLIENT_ID = '313939632963-kt0ba7ptm88760nr32jiupgotg3ne2do.apps.googleusercontent.com';
+
+// Scopes necesarios: drive.file = acceso solo a archivos creados por esta app
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+// Nombre del archivo y carpeta en Drive
+const DRIVE_FOLDER_NAME = 'ConsultorioMedicoApp';
+const DRIVE_FILE_NAME   = 'consultorio_finanzas_data.json';
+
+// ============================================================
+//  CONSTANTES
+// ============================================================
+const MONTHS       = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MONTH_SHORT  = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const DRIVE_API    = 'https://www.googleapis.com/drive/v3';
+const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
+
+// ============================================================
+//  ESTADO GLOBAL
+// ============================================================
+let DB = {
+  ingresos:      [],
+  egresos:       [],
+  origins:       ['Efectivo','Transferencia','Tarjeta','Obra social','PAMI','IOMA','OSDE','Particular'],
+  profesionales: ['Fonoaudiología','Psicología','Kinesiología','Nutrición','Laboratorio','Dermatología','Otros'],
+  categorias:    ['Alquiler','Impuestos','Secretaria','Comunicación','Insumos médicos','Bienes muebles','Servicios','Mantenimiento','Limpieza','Otros'],
+  budget:        {},
+  lastUpdated:   null,
+  version:       1
+};
+
+// Google auth state
+const AUTH = {
+  accessToken:  null,
+  user:         null,      // { name, email, picture }
+  driveFileId:  null,      // ID del archivo en Drive (cacheado)
+  driveFolderId:null,
+  isOffline:    false      // modo sin cuenta
+};
+
+// Sync state
+const SYNC = {
+  status:       'offline',  // offline | synced | pending | error | syncing
+  lastSync:     null,
+  errorMsg:     null
+};
+
+let currentPage  = 'dashboard';
+let currentMonth = new Date().getMonth();
+let currentYear  = new Date().getFullYear();
+let pickerYear   = currentYear;
+let incFilter    = 'all';
+let egrFilter    = 'all';
+
+// ============================================================
+//  LOCAL STORAGE
+// ============================================================
+function saveLocalDB() {
+  localStorage.setItem('consultorio_db_v2', JSON.stringify(DB));
+  localStorage.setItem('consultorio_auth', JSON.stringify({
+    driveFileId:   AUTH.driveFileId,
+    driveFolderId: AUTH.driveFolderId,
+    user:          AUTH.user,
+    lastSync:      SYNC.lastSync
+  }));
+}
+
+function loadLocalDB() {
+  try {
+    const raw = localStorage.getItem('consultorio_db_v2');
+    // backward compat: also check old key
+    const rawOld = !raw ? localStorage.getItem('consultorio_db') : null;
+    if (raw)    { const p = JSON.parse(raw);    DB = Object.assign(DB, p); }
+    else if (rawOld) { const p = JSON.parse(rawOld); DB = Object.assign(DB, p); }
+
+    const authRaw = localStorage.getItem('consultorio_auth');
+    if (authRaw) {
+      const a = JSON.parse(authRaw);
+      AUTH.driveFileId   = a.driveFileId   || null;
+      AUTH.driveFolderId = a.driveFolderId || null;
+      AUTH.user          = a.user          || null;
+      SYNC.lastSync      = a.lastSync      || null;
+    }
+  } catch(e) { console.warn('loadLocalDB error:', e); }
+}
+
+function markPending() {
+  SYNC.status = AUTH.isOffline ? 'offline' : 'pending';
+  updateSyncUI();
+}
+
+// ============================================================
+//  GOOGLE IDENTITY SERVICES — AUTENTICACIÓN
+// ============================================================
+let tokenClient = null;
+
+/**
+ * Inicializa el cliente OAuth de GIS.
+ * Se llama después de que el script de Google se cargue.
+ */
+function initGIS() {
+  if (!window.google || !window.google.accounts) {
+    // SDK no cargó aún, reintentar
+    setTimeout(initGIS, 500);
+    return;
+  }
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: handleTokenResponse
+  });
+  console.log('GIS initialized');
+}
+
+/**
+ * Callback cuando el usuario autoriza y obtenemos el token.
+ */
+function handleTokenResponse(response) {
+  if (response.error) {
+    console.error('Token error:', response.error);
+    setSyncStatus('error', 'Error de autenticación: ' + response.error);
+    showToast('✗ Error al iniciar sesión');
+    return;
+  }
+  AUTH.accessToken = response.access_token;
+  // Obtener perfil del usuario
+  fetchGoogleProfile().then(() => {
+    AUTH.isOffline = false;
+    hideLoginScreen();
+    showToast('✓ Sesión iniciada como ' + AUTH.user.name);
+    setSyncStatus('pending');
+    // Intentar sincronizar al iniciar sesión
+    syncNow();
+  });
+}
+
+/**
+ * Inicia el flujo OAuth. Si el SDK no está listo aún, espera.
+ */
+function signInWithGoogle() {
+  if (!window.google || !google.accounts) {
+    showToast('Cargando SDK de Google...');
+    setTimeout(signInWithGoogle, 800);
+    return;
+  }
+  if (CLIENT_ID === 'TU_CLIENT_ID_AQUI') {
+    alert(
+      '⚠️ Configuración requerida\n\n' +
+      'Debés reemplazar "TU_CLIENT_ID_AQUI" con tu Client ID de Google.\n\n' +
+      'Instrucciones:\n' +
+      '1. Ir a console.cloud.google.com\n' +
+      '2. Habilitar Google Drive API\n' +
+      '3. Crear credencial OAuth 2.0 (Aplicación web)\n' +
+      '4. Agregar el origen de este archivo como JavaScript autorizado\n' +
+      '5. Pegar el Client ID en el código\n\n' +
+      'Mientras tanto podés usar la app en modo offline.'
+    );
+    return;
+  }
+  if (!tokenClient) { initGIS(); setTimeout(signInWithGoogle, 600); return; }
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+/**
+ * Cerrar sesión: revoca el token y limpia el estado.
+ */
+function signOut() {
+  if (!confirm('¿Cerrar sesión de Google?')) return;
+  if (AUTH.accessToken && window.google?.accounts?.oauth2) {
+    google.accounts.oauth2.revoke(AUTH.accessToken, () => console.log('Token revoked'));
+  }
+  AUTH.accessToken  = null;
+  AUTH.user         = null;
+  AUTH.isOffline    = false;
+  AUTH.driveFileId  = null;
+  AUTH.driveFolderId= null;
+  SYNC.status       = 'offline';
+  SYNC.lastSync     = null;
+  localStorage.removeItem('consultorio_auth');
+  saveLocalDB();
+  updateSyncUI();
+  refreshNube();
+  showLoginScreen();
+  showToast('Sesión cerrada');
+}
+
+/**
+ * Modo offline: usar la app sin Google, datos solo locales.
+ */
+function useOfflineMode() {
+  AUTH.isOffline = true;
+  AUTH.accessToken = null;
+  AUTH.user = null;
+  hideLoginScreen();
+  setSyncStatus('offline');
+  showToast('Modo local activado');
+}
+
+function showLoginScreen() {
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+
+function hideLoginScreen() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  // helper to fix missing function name
+  refreshPage(currentPage);
+}
+
+/**
+ * Obtiene el perfil del usuario autenticado.
+ */
+async function fetchGoogleProfile() {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { 'Authorization': 'Bearer ' + AUTH.accessToken }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    AUTH.user = { name: data.name, email: data.email, picture: data.picture };
+    saveLocalDB();
+  } catch(e) { console.warn('fetchGoogleProfile error:', e); }
+}
+
+// ============================================================
+//  GOOGLE DRIVE API
+// ============================================================
+
+/**
+ * Realiza un request autenticado a Google Drive API.
+ * Maneja automáticamente 401 (token expirado).
+ */
+async function driveRequest(url, options = {}) {
+  if (!AUTH.accessToken) throw new Error('No hay token de acceso');
+  const headers = Object.assign({
+    'Authorization': 'Bearer ' + AUTH.accessToken
+  }, options.headers || {});
+
+  const res = await fetch(url, Object.assign({}, options, { headers }));
+
+  if (res.status === 401) {
+    // Token expirado: solicitar uno nuevo
+    AUTH.accessToken = null;
+    throw new Error('TOKEN_EXPIRED');
+  }
+  return res;
+}
+
+/**
+ * Busca o crea la carpeta ConsultorioMedicoApp en Drive.
+ * Retorna el ID de la carpeta.
+ */
+async function getOrCreateFolder() {
+  if (AUTH.driveFolderId) return AUTH.driveFolderId;
+
+  // Buscar carpeta existente
+  const query = encodeURIComponent(
+    `name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
+  );
+  const res = await driveRequest(`${DRIVE_API}/files?q=${query}&spaces=drive&fields=files(id,name)`);
+  const data = await res.json();
+
+  if (data.files && data.files.length > 0) {
+    AUTH.driveFolderId = data.files[0].id;
+    saveLocalDB();
+    return AUTH.driveFolderId;
+  }
+
+  // Crear carpeta
+  const createRes = await driveRequest(`${DRIVE_API}/files`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: DRIVE_FOLDER_NAME,
+      mimeType: 'application/vnd.google-apps.folder'
+    })
+  });
+  const folder = await createRes.json();
+  AUTH.driveFolderId = folder.id;
+  saveLocalDB();
+  console.log('Created Drive folder:', AUTH.driveFolderId);
+  return AUTH.driveFolderId;
+}
+
+/**
+ * Busca el archivo consultorio_finanzas_data.json en la carpeta.
+ * Retorna el ID o null si no existe.
+ */
+async function findDriveFile(folderId) {
+  if (AUTH.driveFileId) {
+    // Verificar que siga existiendo
+    try {
+      const res = await driveRequest(`${DRIVE_API}/files/${AUTH.driveFileId}?fields=id,name`);
+      if (res.ok) return AUTH.driveFileId;
+    } catch(e) {}
+    AUTH.driveFileId = null;
+  }
+
+  const query = encodeURIComponent(
+    `name='${DRIVE_FILE_NAME}' and '${folderId}' in parents and trashed=false`
+  );
+  const res = await driveRequest(`${DRIVE_API}/files?q=${query}&fields=files(id,name,modifiedTime)`);
+  const data = await res.json();
+
+  if (data.files && data.files.length > 0) {
+    AUTH.driveFileId = data.files[0].id;
+    saveLocalDB();
+    return AUTH.driveFileId;
+  }
+  return null;
+}
+
+/**
+ * Descarga el contenido del archivo de Drive.
+ * Retorna el objeto JSON parseado.
+ */
+async function downloadDriveFile(fileId) {
+  const res = await driveRequest(`${DRIVE_API}/files/${fileId}?alt=media`);
+  if (!res.ok) throw new Error('Error descargando archivo: ' + res.status);
+  return await res.json();
+}
+
+/**
+ * Crea el archivo en Drive con los datos iniciales.
+ * Usa multipart upload.
+ */
+async function createDriveFile(folderId, content) {
+  const metadata = {
+    name: DRIVE_FILE_NAME,
+    parents: [folderId],
+    mimeType: 'application/json'
+  };
+  const body = buildMultipartBody(metadata, content);
+
+  const res = await driveRequest(`${DRIVE_UPLOAD}/files?uploadType=multipart&fields=id`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'multipart/related; boundary=boundary_consultorio' },
+    body
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('Error creando archivo: ' + err);
+  }
+  const file = await res.json();
+  AUTH.driveFileId = file.id;
+  saveLocalDB();
+  console.log('Created Drive file:', AUTH.driveFileId);
+  return AUTH.driveFileId;
+}
+
+/**
+ * Actualiza (PATCH) el archivo existente en Drive.
+ */
+async function updateDriveFile(fileId, content) {
+  const body = buildMultipartBody({}, content);
+  const res = await driveRequest(`${DRIVE_UPLOAD}/files/${fileId}?uploadType=multipart`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'multipart/related; boundary=boundary_consultorio' },
+    body
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('Error actualizando archivo: ' + err);
+  }
+  return await res.json();
+}
+
+/**
+ * Construye el cuerpo multipart para la API de Drive.
+ */
+function buildMultipartBody(metadata, content) {
+  const delimiter = '--boundary_consultorio';
+  const close     = '--boundary_consultorio--';
+  const contentStr = JSON.stringify(content, null, 2);
+
+  return [
+    delimiter,
+    'Content-Type: application/json; charset=UTF-8',
+    '',
+    JSON.stringify(metadata),
+    delimiter,
+    'Content-Type: application/json; charset=UTF-8',
+    '',
+    contentStr,
+    close
+  ].join('\r\n');
+}
+
+// ============================================================
+//  SINCRONIZACIÓN (MERGE LÓGIC)
+// ============================================================
+
+/**
+ * Fusiona dos arrays de transacciones por ID.
+ * Regla: si el ID ya existe, se queda la versión con updatedAt más reciente.
+ * Si no existe → se agrega. NUNCA se borra nada.
+ */
+function mergeTransactions(local, remote) {
+  const map = new Map();
+  // Primero cargar locales
+  for (const t of local) map.set(t.id, t);
+  // Luego remotos: gana el más reciente
+  for (const t of remote) {
+    if (!map.has(t.id)) {
+      map.set(t.id, t);
+    } else {
+      const localT  = map.get(t.id);
+      const localTs = localT.updatedAt  || localT.createdAt  || 0;
+      const remoteTs= t.updatedAt       || t.createdAt       || 0;
+      if (remoteTs > localTs) map.set(t.id, t);
+    }
+  }
+  return Array.from(map.values());
+}
+
+/**
+ * Fusiona las listas de categorías, orígenes y profesionales
+ * (unión sin duplicados).
+ */
+function mergeLists(local, remote) {
+  return [...new Set([...local, ...remote])];
+}
+
+/**
+ * Fusiona los datos locales con los remotos y retorna el resultado unificado.
+ */
+function mergeData(local, remote) {
+  return {
+    ingresos:      mergeTransactions(local.ingresos || [], remote.ingresos || []),
+    egresos:       mergeTransactions(local.egresos  || [], remote.egresos  || []),
+    origins:       mergeLists(local.origins      || [], remote.origins      || []),
+    profesionales: mergeLists(local.profesionales || [], remote.profesionales || []),
+    categorias:    mergeLists(local.categorias   || [], remote.categorias   || []),
+    budget:        Object.assign({}, remote.budget || {}, local.budget || {}),
+    lastUpdated:   Date.now(),
+    version:       Math.max((local.version || 1), (remote.version || 1)) + 1
+  };
+}
+
+/**
+ * Función principal de sincronización.
+ * 1. Busca/crea carpeta y archivo.
+ * 2. Descarga versión remota.
+ * 3. Fusiona con datos locales.
+ * 4. Sube versión fusionada.
+ */
+async function syncNow() {
+  if (!AUTH.accessToken) {
+    showToast('Necesitás iniciar sesión para sincronizar');
+    return;
+  }
+  if (SYNC.status === 'syncing') return; // evitar doble click
+
+  setSyncStatus('syncing');
+  const btn = document.getElementById('sync-btn');
+  if (btn) { btn.disabled = true; btn.classList.add('spinning'); }
+
+  try {
+    // 1. Obtener o crear carpeta
+    const folderId = await getOrCreateFolder();
+    updateNubeArchivo('Buscando archivo...');
+
+    // 2. Buscar archivo
+    const fileId = await findDriveFile(folderId);
+
+    let merged;
+    if (!fileId) {
+      // 3a. Archivo no existe → crear con datos locales
+      console.log('Archivo no existe en Drive, creando...');
+      updateNubeArchivo('Creando archivo nuevo...');
+      const toUpload = Object.assign({}, DB, { lastUpdated: Date.now(), version: 1 });
+      await createDriveFile(folderId, toUpload);
+      merged = toUpload;
+    } else {
+      // 3b. Descargar datos remotos
+      updateNubeArchivo('Descargando datos...');
+      let remoteData;
+      try {
+        remoteData = await downloadDriveFile(fileId);
+      } catch(e) {
+        console.warn('Error descargando, usando solo local:', e);
+        remoteData = { ingresos: [], egresos: [] };
+      }
+
+      // 4. Fusionar
+      updateNubeArchivo('Fusionando datos...');
+      merged = mergeData(DB, remoteData);
+
+      // 5. Subir datos fusionados
+      updateNubeArchivo('Subiendo datos...');
+      await updateDriveFile(fileId, merged);
+    }
+
+    // 6. Actualizar DB local con datos fusionados
+    DB = Object.assign(DB, merged);
+    SYNC.lastSync = new Date().toISOString();
+    saveLocalDB();
+
+    setSyncStatus('synced');
+    showToast('✓ Sincronizado con Google Drive');
+    refreshPage(currentPage);
+
+  } catch(err) {
+    console.error('Sync error:', err);
+    if (err.message === 'TOKEN_EXPIRED') {
+      AUTH.accessToken = null;
+      setSyncStatus('error', 'Token expirado, iniciá sesión nuevamente');
+      showToast('⚠ Sesión expirada, iniciá sesión');
+      // Intentar renovar token silenciosamente
+      if (tokenClient) tokenClient.requestAccessToken({ prompt: '' });
+    } else {
+      setSyncStatus('error', err.message);
+      showToast('✗ Error de sincronización');
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.classList.remove('spinning'); }
+  }
+}
+
+function updateNubeArchivo(text) {
+  const el = document.getElementById('ns-archivo');
+  if (el) el.textContent = text;
+}
+
+// ============================================================
+//  UI DE SINCRONIZACIÓN
+// ============================================================
+const SYNC_LABELS = {
+  offline:  '⚫ Sin conexión',
+  synced:   '✅ Sincronizado',
+  pending:  '🟡 Pendiente',
+  error:    '🔴 Error',
+  syncing:  '🔄 Sincronizando...'
+};
+
+function setSyncStatus(status, errorMsg) {
+  SYNC.status   = status;
+  SYNC.errorMsg = errorMsg || null;
+  updateSyncUI();
+  refreshNube();
+}
+
+function updateSyncUI() {
+  const pill = document.getElementById('sync-pill');
+  const txt  = document.getElementById('sync-pill-text');
+  if (!pill || !txt) return;
+  pill.className = 'sync-pill ' + SYNC.status;
+  const labels = { offline:'Local', synced:'Sync', pending:'Pendiente', error:'Error', syncing:'Sync...' };
+  txt.textContent = labels[SYNC.status] || SYNC.status;
+}
+
+function refreshNube() {
+  const loggedIn  = document.getElementById('nube-logged-in');
+  const loggedOut = document.getElementById('nube-logged-out');
+  if (!loggedIn || !loggedOut) return;
+
+  if (AUTH.isOffline || (!AUTH.user && !AUTH.accessToken)) {
+    loggedIn.style.display  = 'none';
+    loggedOut.style.display = 'block';
+  } else {
+    loggedIn.style.display  = 'block';
+    loggedOut.style.display = 'none';
+
+    // Actualizar datos de usuario
+    const nameEl  = document.getElementById('nube-name');
+    const emailEl = document.getElementById('nube-email');
+    const avatarEl= document.getElementById('nube-avatar');
+    if (nameEl  && AUTH.user) nameEl.textContent  = AUTH.user.name  || '—';
+    if (emailEl && AUTH.user) emailEl.textContent = AUTH.user.email || '—';
+    if (avatarEl && AUTH.user?.picture) {
+      avatarEl.innerHTML = `<img src="${AUTH.user.picture}" alt="avatar" onerror="this.parentElement.innerHTML='👤'">`;
+    }
+
+    // Estado sync
+    const estadoEl  = document.getElementById('ns-estado');
+    const ultimaEl  = document.getElementById('ns-ultima');
+    const versionEl = document.getElementById('ns-version');
+    const ingEl     = document.getElementById('ns-ingresos');
+    const egrEl     = document.getElementById('ns-egresos');
+    const archivoEl = document.getElementById('ns-archivo');
+
+    if (estadoEl)  estadoEl.textContent  = SYNC_LABELS[SYNC.status] || SYNC.status;
+    if (ultimaEl)  ultimaEl.textContent  = SYNC.lastSync ? formatDateTime(SYNC.lastSync) : 'Nunca';
+    if (versionEl) versionEl.textContent = 'v' + (DB.version || 1);
+    if (ingEl)     ingEl.textContent     = DB.ingresos.length + ' registros';
+    if (egrEl)     egrEl.textContent     = DB.egresos.length  + ' registros';
+    if (archivoEl && !archivoEl.textContent.includes('...')) {
+      archivoEl.textContent = AUTH.driveFileId ? '✓ ' + DRIVE_FILE_NAME : 'No encontrado';
+    }
+
+    // Color del estado
+    if (estadoEl) {
+      estadoEl.style.color = {
+        synced:  'var(--green)',
+        pending: 'var(--amber)',
+        error:   'var(--red)',
+        syncing: 'var(--accent)',
+        offline: 'var(--text3)'
+      }[SYNC.status] || 'var(--text)';
+    }
+
+    // Mensaje de error
+    if (SYNC.errorMsg && estadoEl) {
+      estadoEl.title = SYNC.errorMsg;
+    }
+  }
+}
+
+function formatDateTime(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  } catch(e) { return iso; }
+}
+
+// ============================================================
+//  HELPERS GENERALES
+// ============================================================
+function fmt(n) {
+  return '$' + (+(n||0)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Genera un UUID v4 simple */
+function uid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+function todayISO() {
+  const d = new Date();
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
+}
+
+function parseISO(s) {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function monthTxns(arr) {
+  return arr.filter(t => {
+    const d = parseISO(t.fecha);
+    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+  });
+}
+
+function monthKey() {
+  return `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+}
+
+function showToast(msg, duration = 2200) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), duration);
+}
+
+function selectSeg(hiddenId, val, btn) {
+  btn.closest('.seg-control').querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(hiddenId).value = val;
+}
+
+function populateSelect(id, arr) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = arr.map(v => `<option value="${v}">${v}</option>`).join('');
+}
+
+// ============================================================
+//  NAVEGACIÓN
+// ============================================================
+function goTo(page, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  if (btn) btn.classList.add('active');
+  currentPage = page;
+  const fabPages = ['ingresos', 'egresos'];
+  document.getElementById('fab-btn').style.display = fabPages.includes(page) ? 'flex' : 'none';
+  refreshPage(page);
+}
+
+function refreshPage(page) {
+  if      (page === 'dashboard')  refreshDashboard();
+  else if (page === 'ingresos')   refreshIngresos();
+  else if (page === 'egresos')    refreshEgresos();
+  else if (page === 'balance')    refreshBalance();
+  else if (page === 'proyeccion') refreshProyeccion();
+  else if (page === 'nube')       refreshNube();
+  else if (page === 'config')     refreshConfig();
+}
+
+function onFabClick() {
+  if (currentPage === 'ingresos') toggleForm('income');
+  else if (currentPage === 'egresos') toggleForm('expense');
+}
+
+// ============================================================
+//  MONTH PICKER
+// ============================================================
+function updateHeaderMonth() {
+  const el = document.getElementById('header-month-btn');
+  if (el) el.textContent = MONTHS[currentMonth] + ' ' + currentYear;
+}
+
+function openMonthPicker() {
+  pickerYear = currentYear;
+  renderMonthGrid();
+  document.getElementById('month-modal').classList.add('open');
+}
+
+function closeMonthPicker(e) {
+  if (e.target === document.getElementById('month-modal'))
+    document.getElementById('month-modal').classList.remove('open');
+}
+
+function changeYear(delta) {
+  pickerYear += delta;
+  document.getElementById('picker-year').textContent = pickerYear;
+  renderMonthGrid();
+}
+
+function renderMonthGrid() {
+  document.getElementById('picker-year').textContent = pickerYear;
+  document.getElementById('month-grid').innerHTML = MONTHS.map((m, i) => `
+    <button class="month-opt ${i === currentMonth && pickerYear === currentYear ? 'active' : ''}"
+      onclick="selectMonth(${i},${pickerYear})">${MONTH_SHORT[i]}</button>
+  `).join('');
+}
+
+function selectMonth(m, y) {
+  currentMonth = m; currentYear = y;
+  updateHeaderMonth();
+  document.getElementById('month-modal').classList.remove('open');
+  refreshPage(currentPage);
+}
+
+// ============================================================
+//  FORMS — TOGGLE
+// ============================================================
+function toggleForm(type) {
+  const id = type === 'income' ? 'income-form-card' : 'expense-form-card';
+  const el = document.getElementById(id);
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'block';
+
+  if (!isOpen) {
+    if (type === 'income') {
+      document.getElementById('inc-fecha').value  = todayISO();
+      document.getElementById('inc-monto').value  = '';
+      document.getElementById('inc-obs').value    = '';
+      populateSelect('inc-origen',      DB.origins);
+      populateSelect('inc-profesional', DB.profesionales);
+      document.getElementById('inc-persona').value = 'Hugo';
+      document.querySelectorAll('#income-form-card .seg-btn').forEach((b, i) => b.classList.toggle('active', i === 0));
+    } else {
+      document.getElementById('egr-fecha').value   = todayISO();
+      document.getElementById('egr-monto').value   = '';
+      document.getElementById('egr-detalle').value = '';
+      populateSelect('egr-cat', DB.categorias);
+      document.getElementById('egr-persona').value = 'Hugo';
+      document.querySelectorAll('#expense-form-card .seg-btn').forEach((b, i) => b.classList.toggle('active', i === 0));
+    }
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+// ============================================================
+//  INGRESOS — CRUD
+// ============================================================
+function saveIngreso() {
+  const fecha   = document.getElementById('inc-fecha').value;
+  const monto   = parseFloat(document.getElementById('inc-monto').value);
+  const origen  = document.getElementById('inc-origen').value;
+  const prof    = document.getElementById('inc-profesional').value;
+  const persona = document.getElementById('inc-persona').value;
+  const obs     = document.getElementById('inc-obs').value;
+
+  if (!fecha || isNaN(monto) || monto <= 0) { showToast('⚠ Completá fecha y monto'); return; }
+
+  const now = new Date().toISOString();
+  DB.ingresos.push({
+    id: uid(), fecha, monto, origen,
+    profesional: prof, persona,
+    observaciones: obs,
+    createdAt: now, updatedAt: now
+  });
+
+  saveLocalDB();
+  markPending();
+  toggleForm('income');
+  refreshIngresos();
+  showToast('✓ Ingreso guardado');
+  // Auto-sync si hay token
+  if (AUTH.accessToken) syncNow();
+}
+
+function deleteIngreso(id) {
+  if (!confirm('¿Eliminar este ingreso?')) return;
+  DB.ingresos = DB.ingresos.filter(t => t.id !== id);
+  saveLocalDB();
+  markPending();
+  refreshIngresos();
+  refreshDashboard();
+  if (AUTH.accessToken) syncNow();
+}
+
+function refreshIngresos() {
+  let txns = monthTxns(DB.ingresos);
+  if (incFilter !== 'all') txns = txns.filter(t => t.persona === incFilter);
+  txns = [...txns].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const list = document.getElementById('ingresos-list');
+  if (!list) return;
+  if (!txns.length) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Sin ingresos en este período</div></div>';
+    return;
+  }
+  list.innerHTML = txns.map(t => `
+    <div class="txn-item">
+      <div class="txn-dot income">💰</div>
+      <div class="txn-info">
+        <div class="txn-name">${escHtml(t.profesional)}</div>
+        <div class="txn-meta">${formatDate(t.fecha)} · ${escHtml(t.origen)}${t.observaciones ? ' · ' + escHtml(t.observaciones) : ''}</div>
+      </div>
+      <div class="txn-right">
+        <div class="txn-amount income">${fmt(t.monto)}</div>
+        <div class="txn-person ${t.persona.toLowerCase()}">${t.persona}</div>
+      </div>
+      <button class="txn-del" onclick="deleteIngreso('${t.id}')">×</button>
+    </div>
+  `).join('');
+}
+
+function filterTxn(type, val, btn) {
+  btn.closest('.filter-row').querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (type === 'inc') { incFilter = val; refreshIngresos(); }
+  else                { egrFilter = val; refreshEgresos(); }
+}
+
+// ============================================================
+//  EGRESOS — CRUD
+// ============================================================
+function saveEgreso() {
+  const fecha   = document.getElementById('egr-fecha').value;
+  const monto   = parseFloat(document.getElementById('egr-monto').value);
+  const cat     = document.getElementById('egr-cat').value;
+  const persona = document.getElementById('egr-persona').value;
+  const detalle = document.getElementById('egr-detalle').value;
+
+  if (!fecha || isNaN(monto) || monto <= 0) { showToast('⚠ Completá fecha y monto'); return; }
+
+  const now = new Date().toISOString();
+  DB.egresos.push({
+    id: uid(), fecha, monto,
+    categoria: cat, persona, detalle,
+    createdAt: now, updatedAt: now
+  });
+
+  saveLocalDB();
+  markPending();
+  toggleForm('expense');
+  refreshEgresos();
+  showToast('✓ Egreso guardado');
+  if (AUTH.accessToken) syncNow();
+}
+
+function deleteEgreso(id) {
+  if (!confirm('¿Eliminar este egreso?')) return;
+  DB.egresos = DB.egresos.filter(t => t.id !== id);
+  saveLocalDB();
+  markPending();
+  refreshEgresos();
+  refreshDashboard();
+  if (AUTH.accessToken) syncNow();
+}
+
+function refreshEgresos() {
+  let txns = monthTxns(DB.egresos);
+  if (egrFilter !== 'all') txns = txns.filter(t => t.persona === egrFilter);
+  txns = [...txns].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const list = document.getElementById('egresos-list');
+  if (!list) return;
+  if (!txns.length) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Sin egresos en este período</div></div>';
+    return;
+  }
+  list.innerHTML = txns.map(t => `
+    <div class="txn-item">
+      <div class="txn-dot expense">💸</div>
+      <div class="txn-info">
+        <div class="txn-name">${escHtml(t.categoria)}</div>
+        <div class="txn-meta">${formatDate(t.fecha)}${t.detalle ? ' · ' + escHtml(t.detalle) : ''}</div>
+      </div>
+      <div class="txn-right">
+        <div class="txn-amount expense">-${fmt(t.monto)}</div>
+        <div class="txn-person ${t.persona.toLowerCase()}">${t.persona}</div>
+      </div>
+      <button class="txn-del" onclick="deleteEgreso('${t.id}')">×</button>
+    </div>
+  `).join('');
+}
+
+function formatDate(s) {
+  const [y, m, d] = s.split('-');
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ============================================================
+//  CÁLCULO FINANCIERO CENTRAL
+// ============================================================
+function calcBalance(ingresos, egresos) {
+  const hugoIng  = ingresos.filter(t => t.persona === 'Hugo').reduce((a, t) => a + t.monto, 0);
+  const lauraIng = ingresos.filter(t => t.persona === 'Laura').reduce((a, t) => a + t.monto, 0);
+  const hugoEgr  = egresos.filter(t => t.persona === 'Hugo').reduce((a, t) => a + t.monto, 0);
+  const lauraEgr = egresos.filter(t => t.persona === 'Laura').reduce((a, t) => a + t.monto, 0);
+  const totalIng = hugoIng + lauraIng;
+  const totalEgr = hugoEgr + lauraEgr;
+  const neto     = totalIng - totalEgr;
+  const hugoNeto  = hugoIng  - hugoEgr;
+  const lauraNeto = lauraIng - lauraEgr;
+  // Para 50/50: transferAmount > 0 = Hugo paga a Laura; < 0 = Laura paga a Hugo
+  const transferAmount = hugoNeto - (neto / 2);
+  return { hugoIng, lauraIng, hugoEgr, lauraEgr, totalIng, totalEgr, neto, hugoNeto, lauraNeto, transferAmount };
+}
+
+// ============================================================
+//  DASHBOARD
+// ============================================================
+function refreshDashboard() {
+  const ing = monthTxns(DB.ingresos);
+  const egr = monthTxns(DB.egresos);
+  const bal = calcBalance(ing, egr);
+
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('dash-period',      MONTHS[currentMonth] + ' ' + currentYear);
+  set('dash-neto',        (bal.neto >= 0 ? '+' : '') + fmt(bal.neto));
+  set('dash-ing',         fmt(bal.totalIng));
+  set('dash-ing-count',   ing.length + ' registro' + (ing.length !== 1 ? 's' : ''));
+  set('dash-egr',         fmt(bal.totalEgr));
+  set('dash-egr-count',   egr.length + ' registro' + (egr.length !== 1 ? 's' : ''));
+  set('dash-hugo-ing',    fmt(bal.hugoIng));
+  set('dash-hugo-egr',    fmt(bal.hugoEgr));
+  set('dash-hugo-neto',   (bal.hugoNeto  >= 0 ? '+' : '') + fmt(bal.hugoNeto));
+  set('dash-laura-ing',   fmt(bal.lauraIng));
+  set('dash-laura-egr',   fmt(bal.lauraEgr));
+  set('dash-laura-neto',  (bal.lauraNeto >= 0 ? '+' : '') + fmt(bal.lauraNeto));
+
+  renderTransferBox('dash-transfer-box', 'dash-transfer-amt', 'dash-transfer-detail', bal, 'dash');
+
+  // Recientes
+  const all = [
+    ...ing.map(t => ({ ...t, type: 'income' })),
+    ...egr.map(t => ({ ...t, type: 'expense' }))
+  ].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 6);
+
+  const recEl = document.getElementById('dash-recent-list');
+  if (recEl) {
+    if (!all.length) {
+      recEl.innerHTML = '<div class="empty"><div class="empty-icon">🗂</div><div class="empty-text">Registrá tus primeras transacciones</div></div>';
+    } else {
+      recEl.innerHTML = all.map(t => {
+        const isInc = t.type === 'income';
+        return `<div class="txn-item">
+          <div class="txn-dot ${t.type}">${isInc ? '💰' : '💸'}</div>
+          <div class="txn-info">
+            <div class="txn-name">${escHtml(isInc ? t.profesional : t.categoria)}</div>
+            <div class="txn-meta">${formatDate(t.fecha)}</div>
+          </div>
+          <div class="txn-right">
+            <div class="txn-amount ${t.type}">${isInc ? '' : '-'}${fmt(t.monto)}</div>
+            <div class="txn-person ${t.persona.toLowerCase()}">${t.persona}</div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+  drawBarChart();
+}
+
+function renderTransferBox(boxId, amtId, detId, bal, prefix) {
+  const box = document.getElementById(boxId);
+  const amtEl = document.getElementById(amtId);
+  const detEl = document.getElementById(detId);
+  if (!box || !amtEl || !detEl) return;
+
+  const t = bal.transferAmount;
+  const labelEl = box.querySelector('.transfer-label');
+
+  box.className = 'transfer-box ' + (Math.abs(t) < 0.01 ? 'neutral' : t > 0 ? 'green' : 'red');
+  if (Math.abs(t) < 0.01) {
+    amtEl.textContent = '¡Equilibrado!';
+    detEl.textContent = 'Ambos tienen 50% de ingresos y gastos';
+    if (labelEl) labelEl.textContent = 'Sin transferencia necesaria';
+  } else if (t > 0) {
+    amtEl.textContent = fmt(Math.abs(t));
+    detEl.textContent = `Hugo transfiere ${fmt(Math.abs(t))} a Laura para igualar 50/50`;
+    if (labelEl) labelEl.textContent = 'Hugo → Laura';
+  } else {
+    amtEl.textContent = fmt(Math.abs(t));
+    detEl.textContent = `Laura transfiere ${fmt(Math.abs(t))} a Hugo para igualar 50/50`;
+    if (labelEl) labelEl.textContent = 'Laura → Hugo';
+  }
+}
+
+// ============================================================
+//  BALANCE PAGE
+// ============================================================
+function refreshBalance() {
+  const ing = monthTxns(DB.ingresos);
+  const egr = monthTxns(DB.egresos);
+  const bal = calcBalance(ing, egr);
+
+  const sumEl = document.getElementById('balance-summary');
+  if (sumEl) {
+    sumEl.innerHTML = `
+      <div class="proj-item"><div class="proj-label">Total Ingresos</div><div class="proj-val" style="color:var(--green)">${fmt(bal.totalIng)}</div></div>
+      <div class="proj-item"><div class="proj-label">Total Egresos</div><div class="proj-val" style="color:var(--red)">${fmt(bal.totalEgr)}</div></div>
+      <div class="proj-item"><div class="proj-label" style="font-weight:700">Resultado neto</div><div class="proj-val" style="color:${bal.neto >= 0 ? 'var(--green)' : 'var(--red)'}">${(bal.neto >= 0 ? '+' : '')}${fmt(bal.neto)}</div></div>
+    `;
+  }
+
+  const calcEl = document.getElementById('balance-calc');
+  if (calcEl) {
+    calcEl.innerHTML = `
+      <div class="proj-item"><div class="proj-label">Ingresos Hugo</div><div class="proj-val" style="color:var(--hugo)">${fmt(bal.hugoIng)}</div></div>
+      <div class="proj-item"><div class="proj-label">Ingresos Laura</div><div class="proj-val" style="color:var(--laura)">${fmt(bal.lauraIng)}</div></div>
+      <div class="proj-item"><div class="proj-label">Egresos Hugo</div><div class="proj-val" style="color:var(--hugo)">${fmt(bal.hugoEgr)}</div></div>
+      <div class="proj-item"><div class="proj-label">Egresos Laura</div><div class="proj-val" style="color:var(--laura)">${fmt(bal.lauraEgr)}</div></div>
+      <div class="proj-item"><div class="proj-label">Neto Hugo</div><div class="proj-val" style="color:var(--hugo)">${(bal.hugoNeto >= 0 ? '+' : '')}${fmt(bal.hugoNeto)}</div></div>
+      <div class="proj-item"><div class="proj-label">Neto Laura</div><div class="proj-val" style="color:var(--laura)">${(bal.lauraNeto >= 0 ? '+' : '')}${fmt(bal.lauraNeto)}</div></div>
+    `;
+  }
+
+  const t = bal.transferAmount;
+  const half = bal.neto / 2;
+  const fmEl = document.getElementById('balance-formula');
+  if (fmEl) {
+    fmEl.textContent = [
+      `Lógica 50/50:`,
+      `Ingresos total = ${fmt(bal.totalIng)}`,
+      `Egresos total  = ${fmt(bal.totalEgr)}`,
+      `Neto total     = ${fmt(bal.neto)}`,
+      ``,
+      `Cada uno debería tener: ${fmt(half)} neto`,
+      ``,
+      `Neto Hugo  = ${fmt(bal.hugoIng)} - ${fmt(bal.hugoEgr)} = ${fmt(bal.hugoNeto)}`,
+      `Neto Laura = ${fmt(bal.lauraIng)} - ${fmt(bal.lauraEgr)} = ${fmt(bal.lauraNeto)}`,
+      ``,
+      `Diferencia de Hugo: ${fmt(bal.hugoNeto)} - ${fmt(half)} = ${fmt(t)}`,
+      t > 0.01 ? `→ Hugo debe transferir ${fmt(t)} a Laura` :
+      t < -0.01 ? `→ Laura debe transferir ${fmt(Math.abs(t))} a Hugo` :
+      `→ ¡Perfectamente equilibrado!`
+    ].join('\n');
+  }
+
+  renderTransferBox('balance-transfer-box', 'bal-transfer-amt', 'bal-transfer-detail', bal, 'bal');
+  drawPieChart(bal.hugoIng, bal.lauraIng);
+}
+
+// ============================================================
+//  PROYECCIÓN
+// ============================================================
+function getMonthData(y, m) {
+  const ing = DB.ingresos.filter(t => { const d = parseISO(t.fecha); return d.getMonth() === m && d.getFullYear() === y; });
+  const egr = DB.egresos.filter(t => { const d = parseISO(t.fecha); return d.getMonth() === m && d.getFullYear() === y; });
+  return { ing, egr };
+}
+
+function refreshProyeccion() {
+  let nm = currentMonth + 1, ny = currentYear;
+  if (nm > 11) { nm = 0; ny++; }
+
+  const titleEl = document.getElementById('proj-month-title');
+  if (titleEl) titleEl.textContent = `Proyección: ${MONTHS[nm]} ${ny}`;
+
+  let totalIngProm = 0, totalEgrProm = 0, mesesConDatos = 0;
+  for (let i = 1; i <= 3; i++) {
+    let m = currentMonth - i, y = currentYear;
+    if (m < 0) { m += 12; y--; }
+    const d = getMonthData(y, m);
+    if (d.ing.length || d.egr.length) {
+      totalIngProm += d.ing.reduce((a, t) => a + t.monto, 0);
+      totalEgrProm += d.egr.reduce((a, t) => a + t.monto, 0);
+      mesesConDatos++;
+    }
+  }
+  const avgIng = mesesConDatos ? totalIngProm / mesesConDatos : monthTxns(DB.ingresos).reduce((a, t) => a + t.monto, 0);
+  const avgEgr = mesesConDatos ? totalEgrProm / mesesConDatos : monthTxns(DB.egresos).reduce((a, t) => a + t.monto, 0);
+  const projNeto = avgIng - avgEgr;
+
+  const contentEl = document.getElementById('proj-content');
+  if (contentEl) {
+    contentEl.innerHTML = `
+      <div class="proj-item"><div class="proj-label">Ingresos proyectados</div><div class="proj-val" style="color:var(--green)">${fmt(avgIng)}</div></div>
+      <div class="proj-item"><div class="proj-label">Egresos proyectados</div><div class="proj-val" style="color:var(--red)">${fmt(avgEgr)}</div></div>
+      <div class="proj-item"><div class="proj-label" style="font-weight:700">Resultado estimado</div><div class="proj-val" style="color:${projNeto >= 0 ? 'var(--green)' : 'var(--red)'}">${(projNeto >= 0 ? '+' : '')}${fmt(projNeto)}</div></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">Basado en promedio de ${mesesConDatos} mes${mesesConDatos !== 1 ? 'es' : ''} anteriores</div>
+    `;
+  }
+
+  const catFreq = {};
+  for (let i = 1; i <= 3; i++) {
+    let m = currentMonth - i, y = currentYear;
+    if (m < 0) { m += 12; y--; }
+    const d = getMonthData(y, m);
+    [...new Set(d.egr.map(t => t.categoria))].forEach(c => { catFreq[c] = (catFreq[c] || 0) + 1; });
+  }
+  const recurrentes = Object.entries(catFreq).filter(([, v]) => v >= 2).map(([k]) => k);
+  const recEl = document.getElementById('proj-recurrentes');
+  if (recEl) {
+    if (!recurrentes.length) {
+      recEl.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0">No hay suficientes datos para detectar recurrentes</div>';
+    } else {
+      recEl.innerHTML = recurrentes.map(cat => {
+        const totals = [];
+        for (let i = 1; i <= 3; i++) {
+          let m = currentMonth - i, y = currentYear;
+          if (m < 0) { m += 12; y--; }
+          const s = getMonthData(y, m).egr.filter(t => t.categoria === cat).reduce((a, t) => a + t.monto, 0);
+          if (s) totals.push(s);
+        }
+        const avg = totals.reduce((a, v) => a + v, 0) / (totals.length || 1);
+        return `<div class="proj-item"><div class="proj-label">📌 ${escHtml(cat)}</div><div class="proj-val" style="color:var(--amber)">~${fmt(avg)}</div></div>`;
+      }).join('');
+    }
+  }
+
+  const budgetKey = `${ny}-${String(nm + 1).padStart(2, '0')}`;
+  if (!DB.budget[budgetKey]) {
+    DB.budget[budgetKey] = {};
+    DB.categorias.forEach(cat => {
+      const totals = [];
+      for (let i = 1; i <= 3; i++) {
+        let m2 = currentMonth - i, y2 = currentYear;
+        if (m2 < 0) { m2 += 12; y2--; }
+        const s = getMonthData(y2, m2).egr.filter(t => t.categoria === cat).reduce((a, t) => a + t.monto, 0);
+        if (s > 0) totals.push(s);
+      }
+      if (totals.length) DB.budget[budgetKey][cat] = Math.round(totals.reduce((a, v) => a + v, 0) / totals.length);
+    });
+    saveLocalDB();
+  }
+
+  const budgetRows = document.getElementById('proj-budget-rows');
+  const cats = Object.keys(DB.budget[budgetKey] || {});
+  if (budgetRows) {
+    budgetRows.innerHTML = !cats.length
+      ? '<div style="color:var(--text3);font-size:13px">Sin datos históricos para generar presupuesto</div>'
+      : cats.map(cat => `
+        <div class="proj-item">
+          <div class="proj-label">${escHtml(cat)}</div>
+          <input type="number" inputmode="decimal" class="form-control proj-edit"
+            value="${DB.budget[budgetKey][cat] || 0}"
+            onchange="updateBudget('${budgetKey}','${escHtml(cat)}',this.value)"
+            style="width:110px;padding:8px 10px;font-size:15px;text-align:right;font-family:var(--mono);font-weight:600">
+        </div>`).join('');
+  }
+  updateBudgetTotal(budgetKey);
+}
+
+function updateBudget(key, cat, val) {
+  if (!DB.budget[key]) DB.budget[key] = {};
+  DB.budget[key][cat] = parseFloat(val) || 0;
+  saveLocalDB();
+  markPending();
+  updateBudgetTotal(key);
+}
+
+function updateBudgetTotal(key) {
+  const total = Object.values(DB.budget[key] || {}).reduce((a, v) => a + v, 0);
+  const el = document.getElementById('proj-budget-total');
+  if (el) el.textContent = fmt(total);
+}
+
+// ============================================================
+//  CONFIGURACIÓN
+// ============================================================
+function refreshConfig() {
+  renderTags('origins-tags',  DB.origins,       'origin');
+  renderTags('profs-tags',    DB.profesionales, 'prof');
+  renderTags('cats-tags',     DB.categorias,    'cat');
+}
+
+function renderTags(containerId, arr, type) {
+  const el = document.getElementById(containerId);
+  if (el) el.innerHTML = arr.map((v, i) => `
+    <div class="tag">${escHtml(v)} <button class="tag-del" onclick="deleteTag('${type}',${i})">×</button></div>
+  `).join('');
+}
+
+function deleteTag(type, idx) {
+  if (type === 'origin') DB.origins.splice(idx, 1);
+  else if (type === 'prof') DB.profesionales.splice(idx, 1);
+  else DB.categorias.splice(idx, 1);
+  saveLocalDB(); markPending(); refreshConfig();
+}
+
+function addOrigin() {
+  const v = document.getElementById('new-origin').value.trim();
+  if (!v || DB.origins.includes(v)) { showToast('⚠ Valor vacío o duplicado'); return; }
+  DB.origins.push(v); saveLocalDB(); markPending(); refreshConfig();
+  document.getElementById('new-origin').value = '';
+}
+function addProf() {
+  const v = document.getElementById('new-prof').value.trim();
+  if (!v || DB.profesionales.includes(v)) { showToast('⚠ Valor vacío o duplicado'); return; }
+  DB.profesionales.push(v); saveLocalDB(); markPending(); refreshConfig();
+  document.getElementById('new-prof').value = '';
+}
+function addCat() {
+  const v = document.getElementById('new-cat').value.trim();
+  if (!v || DB.categorias.includes(v)) { showToast('⚠ Valor vacío o duplicado'); return; }
+  DB.categorias.push(v); saveLocalDB(); markPending(); refreshConfig();
+  document.getElementById('new-cat').value = '';
+}
+
+// ============================================================
+//  EXPORT / IMPORT
+// ============================================================
+function exportCSV() {
+  const header = 'tipo,fecha,monto,categoria_origen,profesional_detalle,persona,observaciones,id,createdAt\n';
+  const rows = [
+    ...DB.ingresos.map(t =>
+      `ingreso,${t.fecha},${t.monto},${t.origen},${t.profesional},${t.persona},"${t.observaciones || ''}",${t.id},${t.createdAt || ''}`),
+    ...DB.egresos.map(t =>
+      `egreso,${t.fecha},${t.monto},${t.categoria},${t.detalle || ''},${t.persona},"",${t.id},${t.createdAt || ''}`)
+  ].join('\n');
+  downloadBlob(new Blob([header + rows], { type: 'text/csv;charset=utf-8;' }), `consultorio_${monthKey()}.csv`);
+  showToast('✓ CSV exportado');
+}
+
+function exportJSON() {
+  downloadBlob(new Blob([JSON.stringify(DB, null, 2)], { type: 'application/json' }), `consultorio_backup_${new Date().toISOString().slice(0, 10)}.json`);
+  showToast('✓ Backup exportado');
+}
+
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = name;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function importFile(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      if (file.name.endsWith('.json')) {
+        const data = JSON.parse(e.target.result);
+        if (!confirm('¿Fusionar datos del backup con los datos actuales?')) return;
+        DB = mergeData(DB, data);
+      } else {
+        const lines = e.target.result.trim().split('\n').slice(1);
+        let countI = 0, countE = 0;
+        const now = new Date().toISOString();
+        lines.forEach(line => {
+          const cols = line.split(',');
+          if (cols[0] === 'ingreso') {
+            DB.ingresos.push({ id: cols[7] || uid(), fecha: cols[1], monto: parseFloat(cols[2]), origen: cols[3], profesional: cols[4], persona: cols[5], observaciones: (cols[6] || '').replace(/^"|"$/g, ''), createdAt: cols[8] || now, updatedAt: now });
+            countI++;
+          } else if (cols[0] === 'egreso') {
+            DB.egresos.push({ id: cols[7] || uid(), fecha: cols[1], monto: parseFloat(cols[2]), categoria: cols[3], detalle: cols[4], persona: cols[5], createdAt: cols[8] || now, updatedAt: now });
+            countE++;
+          }
+        });
+        showToast(`✓ Importados: ${countI} ingresos, ${countE} egresos`);
+      }
+      saveLocalDB(); markPending(); refreshPage(currentPage);
+    } catch(err) { showToast('✗ Error al importar: ' + err.message); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function clearAll() {
+  if (!confirm('¿Eliminar TODOS los datos locales? Esta acción no se puede deshacer.')) return;
+  if (!confirm('¿Estás completamente seguro?')) return;
+  DB.ingresos = []; DB.egresos = []; DB.budget = {};
+  DB.lastUpdated = Date.now(); DB.version++;
+  saveLocalDB(); markPending(); refreshPage(currentPage);
+  showToast('✓ Datos locales borrados');
+}
+
+// ============================================================
+//  CHARTS
+// ============================================================
+function drawBarChart() {
+  const canvas = document.getElementById('chart-bar');
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.parentElement.clientWidth || 300;
+  const H = 160;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  canvas.width = W * dpr;       canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    let m = currentMonth - i, y = currentYear;
+    if (m < 0) { m += 12; y--; }
+    const d = getMonthData(y, m);
+    months.push({
+      label: MONTH_SHORT[m],
+      ing: d.ing.reduce((a, t) => a + t.monto, 0),
+      egr: d.egr.reduce((a, t) => a + t.monto, 0)
+    });
+  }
+
+  const maxVal = Math.max(...months.map(m => Math.max(m.ing, m.egr)), 1);
+  const PAD_T = 10, PAD_B = 24;
+  const chartH = H - PAD_T - PAD_B;
+  const groupW = W / months.length;
+  const barW   = groupW * 0.3;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = '#E2E6EB'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = PAD_T + chartH - (chartH * i / 4);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  months.forEach((m, i) => {
+    const cx   = groupW * i + groupW / 2;
+    const ingH = (m.ing / maxVal) * chartH;
+    const egrH = (m.egr / maxVal) * chartH;
+    ctx.fillStyle = '#0D9488';
+    ctx.beginPath(); ctx.roundRect(cx - barW - 2, PAD_T + chartH - ingH, barW, ingH, [4, 4, 0, 0]); ctx.fill();
+    ctx.fillStyle = '#DC2626';
+    ctx.beginPath(); ctx.roundRect(cx + 2, PAD_T + chartH - egrH, barW, egrH, [4, 4, 0, 0]); ctx.fill();
+    ctx.fillStyle = '#9AA3AD'; ctx.font = '11px DM Sans, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(m.label, cx, H - 6);
+  });
+}
+
+function drawPieChart(hugoVal, lauraVal) {
+  const canvas = document.getElementById('chart-pie');
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.parentElement.clientWidth || 300;
+  const H = 180;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  canvas.width = W * dpr;       canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  const total = hugoVal + lauraVal;
+  const cx = W / 2, cy = H / 2, r = Math.min(W, H) / 2 - 20;
+
+  if (total === 0) {
+    ctx.fillStyle = '#E2E6EB';
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#9AA3AD'; ctx.font = '13px DM Sans, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Sin datos', cx, cy);
+    return;
+  }
+  const hugoAngle = (hugoVal / total) * Math.PI * 2;
+  let start = -Math.PI / 2;
+  [[hugoAngle, '#7C3AED'], [Math.PI * 2 - hugoAngle, '#DB2777']].forEach(([angle, color]) => {
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, start, start + angle); ctx.closePath();
+    ctx.fillStyle = color; ctx.fill(); start += angle;
+  });
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2); ctx.fillStyle = '#FFFFFF'; ctx.fill();
+  const pct = Math.round((hugoVal / total) * 100);
+  ctx.fillStyle = '#0D1117'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '700 18px DM Mono, monospace'; ctx.fillText(pct + '%', cx, cy - 7);
+  ctx.font = '12px DM Sans, sans-serif'; ctx.fillStyle = '#9AA3AD'; ctx.fillText('Hugo', cx, cy + 12);
+}
+
+// ============================================================
+//  INIT
+// ============================================================
+function init() {
+  loadLocalDB();
+  updateHeaderMonth();
+
+  // Inicializar GIS cuando el SDK esté listo
+  if (window.google?.accounts) initGIS();
+  else window.addEventListener('load', () => setTimeout(initGIS, 500));
+
+  // ¿Hay sesión guardada?
+  if (AUTH.user) {
+    // Usuario ya conocido, intentar renovar token silenciosamente
+    hideLoginScreen();
+    setSyncStatus('pending');
+    // Intentar obtener token sin prompt
+    if (window.google?.accounts?.oauth2 && CLIENT_ID !== 'TU_CLIENT_ID_AQUI') {
+      setTimeout(() => {
+        if (!AUTH.accessToken && tokenClient) {
+          tokenClient.requestAccessToken({ prompt: '' });
+        }
+      }, 1200);
+    }
+  } else if (AUTH.isOffline) {
+    hideLoginScreen();
+    setSyncStatus('offline');
+  }
+  // else: mostrar pantalla de login (ya está visible por defecto)
+
+  // FAB oculto al inicio
+  document.getElementById('fab-btn').style.display = 'none';
+
+  refreshDashboard();
+}
+
+window.addEventListener('DOMContentLoaded', init);
+window.addEventListener('resize', () => {
+  if (currentPage === 'dashboard') drawBarChart();
+  if (currentPage === 'balance') {
+    const ing = monthTxns(DB.ingresos);
+    const egr = monthTxns(DB.egresos);
+    const bal = calcBalance(ing, egr);
+    drawPieChart(bal.hugoIng, bal.lauraIng);
+  }
+});
+</script>
+</body>
+</html>
